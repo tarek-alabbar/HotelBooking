@@ -20,6 +20,8 @@ public sealed class Booking
 
     public DateTime CreatedUtc { get; private set; }
 
+    public ICollection<BookingNight> Nights { get; private set; } = new List<BookingNight>();
+
     private Booking() { }
 
     public Booking(

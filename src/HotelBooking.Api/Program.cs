@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using HotelBooking.Api.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using HotelBooking.Api.Application.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +15,7 @@ builder.Services.AddDbContext<BookingDbContext>(options =>
 });
 
 builder.Services.AddControllers();
+builder.Services.AddScoped<BookingService>();
 
 
 builder.Services.AddProblemDetails();

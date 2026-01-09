@@ -11,6 +11,7 @@ public static class DbInitializer
     public static async Task ResetAsync(BookingDbContext db, CancellationToken ct = default)
     {
         // Delete children first to avoid FK issues.
+        await db.BookingNights.ExecuteDeleteAsync(ct);
         await db.Bookings.ExecuteDeleteAsync(ct);
         await db.Rooms.ExecuteDeleteAsync(ct);
         await db.Hotels.ExecuteDeleteAsync(ct);

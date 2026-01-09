@@ -11,6 +11,8 @@ public sealed class BookingDbContext : DbContext
     public DbSet<Hotel> Hotels => Set<Hotel>();
     public DbSet<Room> Rooms => Set<Room>();
     public DbSet<Booking> Bookings => Set<Booking>();
+    public DbSet<BookingNight> BookingNights => Set<BookingNight>();
+
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -111,5 +113,35 @@ public sealed class BookingDbContext : DbContext
                 .HasForeignKey(x => x.HotelId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
+
+        // -----------------------
+        // BookingNight
+        // -----------------------
+        modelBuilder.Entity<BookingNight>(entity =>
+        {
+            entity.ToTable("BookingNights");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.NightDate)
+                .HasConversion(dateOnlyConverter)
+                .HasColumnType("TEXT")
+                .IsRequired();
+
+            // Hard rule enforcement: a room cannot be double-booked for a night.
+            entity.HasIndex(x => new { x.RoomId, x.NightDate })
+                .IsUnique();
+
+            entity.HasOne(x => x.Booking)
+                .WithMany(x => x.Nights)
+                .HasForeignKey(x => x.BookingId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.Room)
+                .WithMany()
+                .HasForeignKey(x => x.RoomId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
     }
 }
