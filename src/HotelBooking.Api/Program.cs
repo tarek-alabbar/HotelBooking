@@ -1,10 +1,18 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using HotelBooking.Api.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --------------------
 // Services
-// --------------------
+builder.Services.AddDbContext<BookingDbContext>(options =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("Default")
+        ?? throw new InvalidOperationException("Connection string 'Default' was not found.");
+
+    options.UseSqlite(connectionString);
+});
+
 builder.Services.AddControllers();
 
 
