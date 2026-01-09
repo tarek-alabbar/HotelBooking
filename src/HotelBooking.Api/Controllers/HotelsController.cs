@@ -21,7 +21,7 @@ public sealed class HotelsController : ControllerBase
     /// </summary>
     /// <param name="name">Hotel name (or part of it).</param>
     [HttpGet]
-    [ProducesResponseType(typeof(List<HotelSummaryDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(SearchResultDto<HotelSummaryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<List<HotelSummaryDto>>> Search([FromQuery] string? name, CancellationToken ct)
     {
@@ -54,7 +54,11 @@ public sealed class HotelsController : ControllerBase
             .OrderBy(h => h.Name)
             .Select(h => new HotelSummaryDto(h.Id, h.Name))
             .ToListAsync(ct);
-
-        return Ok(hotels);
+        
+        var message = hotels.Count == 0
+            ? $"No hotels found matching '{term}'."
+            : $"Found {hotels.Count} hotel(s).";
+        
+        return Ok(new SearchResultDto<HotelSummaryDto>(hotels, message));
     }
 }
