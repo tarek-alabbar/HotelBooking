@@ -1,5 +1,7 @@
 using HotelBooking.Api.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
+using HotelBooking.Api.Application.Dtos;
+using Microsoft.EntityFrameworkCore;
 
 namespace HotelBooking.Api.Controllers;
 
@@ -39,6 +41,57 @@ public sealed class AdminController : ControllerBase
             result
         });
     }
+
+
+    [HttpGet("bookings")]
+    [ProducesResponseType(typeof(List<BookingListItemDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<List<BookingListItemDto>>> GetAllBookings(CancellationToken ct)
+    {
+        EnsureDevOrTest();
+
+        // Query only raw fields that translate cleanly to SQL.
+        var raw = await _db.Bookings
+            .AsNoTracking()
+            .OrderByDescending(b => b.CreatedUtc)
+            .Join(_db.Hotels.AsNoTracking(),
+                b => b.HotelId,
+                h => h.Id,
+                (b, h) => new { b, h })
+            .Join(_db.Rooms.AsNoTracking(),
+                bh => bh.b.RoomId,
+                r => r.Id,
+                (bh, r) => new
+                {
+                    bh.b.BookingReference,
+                    HotelId = bh.h.Id,
+                    HotelName = bh.h.Name,
+                    r.RoomNumber,
+                    r.RoomType,
+                    Guests = bh.b.GuestCount,
+                    bh.b.StartDate,
+                    bh.b.EndDate,
+                    bh.b.CreatedUtc
+                })
+            .ToListAsync(ct);
+
+        // Map + format in-memory (safe across providers).
+        var results = raw
+            .Select(x => new BookingListItemDto(
+                x.BookingReference,
+                x.HotelId,
+                x.HotelName,
+                x.RoomNumber,
+                x.RoomType,
+                x.Guests,
+                x.StartDate.ToString("yyyy-MM-dd"),
+                x.EndDate.ToString("yyyy-MM-dd"),
+                x.CreatedUtc.ToString("O")
+            ))
+            .ToList();
+
+        return Ok(results);
+    }
+
 
     private void EnsureDevOrTest()
     {

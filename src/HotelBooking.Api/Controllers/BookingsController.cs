@@ -1,6 +1,9 @@
 ﻿using HotelBooking.Api.Application.Dtos;
 using HotelBooking.Api.Application.Services;
 using Microsoft.AspNetCore.Mvc;
+using HotelBooking.Api.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+
 
 namespace HotelBooking.Api.Controllers;
 
@@ -8,10 +11,12 @@ namespace HotelBooking.Api.Controllers;
 [Route("api/bookings")]
 public sealed class BookingsController : ControllerBase
 {
+    private readonly BookingDbContext _db;
     private readonly BookingService _bookingService;
 
-    public BookingsController(BookingService bookingService)
+    public BookingsController(BookingDbContext db, BookingService bookingService)
     {
+        _db = db;
         _bookingService = bookingService;
     }
 
@@ -45,13 +50,80 @@ public sealed class BookingsController : ControllerBase
         };
     }
 
-    // Stub for now; we implement it properly next.
+
     [HttpGet("{reference}")]
-    public IActionResult GetByReference([FromRoute] string reference)
-        => NotFound(new ProblemDetails
+    [ProducesResponseType(typeof(BookingDetailsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<BookingDetailsDto>> GetByReference(
+    [FromRoute] string reference,
+    CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(reference))
         {
-            Title = "Not implemented yet",
-            Detail = "Booking lookup will be implemented next.",
-            Status = StatusCodes.Status404NotFound
-        });
+            return NotFound(new ProblemDetails
+            {
+                Title = "Booking not found",
+                Detail = "Booking reference was not provided.",
+                Status = StatusCodes.Status404NotFound
+            });
+        }
+
+        var normalized = reference.Trim();
+
+        // Query only raw fields that translate cleanly to SQL.
+        var raw = await _db.Bookings
+            .AsNoTracking()
+            .Where(b => b.BookingReference == normalized)
+            .Join(_db.Hotels.AsNoTracking(),
+                b => b.HotelId,
+                h => h.Id,
+                (b, h) => new { b, h })
+            .Join(_db.Rooms.AsNoTracking(),
+                bh => bh.b.RoomId,
+                r => r.Id,
+                (bh, r) => new
+                {
+                    bh.b.BookingReference,
+                    HotelId = bh.h.Id,
+                    HotelName = bh.h.Name,
+                    RoomId = r.Id,
+                    r.RoomNumber,
+                    r.RoomType,
+                    r.Capacity,
+                    bh.b.StartDate,
+                    bh.b.EndDate,
+                    Guests = bh.b.GuestCount,
+                    bh.b.CreatedUtc
+                })
+            .FirstOrDefaultAsync(ct);
+
+        if (raw is null)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Booking not found",
+                Detail = $"No booking exists with reference '{normalized}'.",
+                Status = StatusCodes.Status404NotFound
+            });
+        }
+
+        // Map + format in-memory (safe across providers).
+        var dto = new BookingDetailsDto(
+            raw.BookingReference,
+            raw.HotelId,
+            raw.HotelName,
+            raw.RoomId,
+            raw.RoomNumber,
+            raw.RoomType,
+            raw.Capacity,
+            raw.StartDate.ToString("yyyy-MM-dd"),
+            raw.EndDate.ToString("yyyy-MM-dd"),
+            raw.Guests,
+            raw.CreatedUtc.ToString("O")
+        );
+
+        return Ok(dto);
+    }
+
+
 }
