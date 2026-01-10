@@ -1,0 +1,106 @@
+﻿using System.Net;
+using System.Net.Http.Json;
+using FluentAssertions;
+using HotelBooking.Api.Tests.Contracts;
+using HotelBooking.Api.Tests.Fixtures;
+
+namespace HotelBooking.Api.Tests.Tests;
+
+public sealed class BookingTests : ApiTestBase
+{
+    public BookingTests(ApiFactory factory) : base(factory) { }
+
+    [Fact]
+    public async Task CreateBooking_Then_LookupByReference_Should_Return_Details()
+    {
+        await ResetAndSeedAsync();
+
+        var hotelId = await GetHotelIdByNameAsync("Contoso");
+
+        var createBody = new
+        {
+            hotelId,
+            from = "2026-01-20",
+            to = "2026-01-22",
+            guests = 2,
+            roomType = 2 // Double
+        };
+
+        var createResponse = await Client.PostAsJsonAsync("/api/bookings", createBody);
+
+        if (createResponse.StatusCode != HttpStatusCode.Created)
+        {
+            var body = await createResponse.Content.ReadAsStringAsync();
+            throw new Exception($"Expected 201 but got {(int)createResponse.StatusCode}. Body: {body}");
+        }
+
+        var created = await createResponse.Content.ReadFromJsonAsync<BookingCreatedDto>();
+        created.Should().NotBeNull();
+        created!.BookingReference.Should().NotBeNullOrWhiteSpace();
+
+        var lookupResponse = await Client.GetAsync($"/api/bookings/{created.BookingReference}");
+        lookupResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var details = await lookupResponse.Content.ReadFromJsonAsync<BookingDetailsDto>();
+        details.Should().NotBeNull();
+        details!.BookingReference.Should().Be(created.BookingReference);
+        details.HotelId.Should().Be(hotelId);
+        details.Guests.Should().Be(2);
+        details.From.Should().Be("2026-01-20");
+        details.To.Should().Be("2026-01-22");
+    }
+
+
+    [Fact]
+    public async Task CreateBooking_TooManyGuests_Should_Return_400()
+    {
+        await ResetAndSeedAsync();
+
+        var createBody = new
+        {
+            hotelId = 1,
+            from = "2026-01-20",
+            to = "2026-01-20",
+            guests = 99
+        };
+
+        var response = await Client.PostAsJsonAsync("/api/bookings", createBody);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task CreateBooking_WhenAllDoubleRoomsBooked_Should_Return_409()
+    {
+        await ResetAndSeedAsync();
+
+        var hotelId = await GetHotelIdByNameAsync("Contoso");
+
+        // There are 2 Double rooms in seed (room numbers 3 and 4)
+        var body = new
+        {
+            hotelId,
+            from = "2026-01-25",
+            to = "2026-01-26",
+            guests = 2,
+            roomType = 2 // Double
+        };
+
+        var r1 = await Client.PostAsJsonAsync("/api/bookings", body);
+        if (r1.StatusCode != HttpStatusCode.Created)
+        {
+            var b1 = await r1.Content.ReadAsStringAsync();
+            throw new Exception($"First booking expected 201 but got {(int)r1.StatusCode}. Body: {b1}");
+        }
+
+        var r2 = await Client.PostAsJsonAsync("/api/bookings", body);
+        if (r2.StatusCode != HttpStatusCode.Created)
+        {
+            var b2 = await r2.Content.ReadAsStringAsync();
+            throw new Exception($"Second booking expected 201 but got {(int)r2.StatusCode}. Body: {b2}");
+        }
+
+        var r3 = await Client.PostAsJsonAsync("/api/bookings", body);
+        r3.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+}
