@@ -30,12 +30,10 @@ public static class DbInitializer
         var hotel2 = new Hotel("Fabrikam Grand Manchester");
 
         db.Hotels.AddRange(hotel1, hotel2);
-        await db.SaveChangesAsync(ct); // get IDs for FK relationships
+        await db.SaveChangesAsync(ct); // get IDs
 
         // Each hotel: exactly 6 rooms
-        // Distribution: 2 Single (1), 2 Double (2), 2 Deluxe (4)
         var rooms = new List<Room>();
-
         rooms.AddRange(CreateSixRooms(hotel1.Id));
         rooms.AddRange(CreateSixRooms(hotel2.Id));
 
@@ -43,32 +41,44 @@ public static class DbInitializer
         await db.SaveChangesAsync(ct);
 
         // Create a couple bookings to test conflicts/availability deterministically.
-        // Inclusive nights: [StartDate..EndDate]
-        // Example: booking occupies nights 10,11,12 Jan.
         var h1Rooms = rooms.Where(r => r.HotelId == hotel1.Id).OrderBy(r => r.RoomNumber).ToList();
 
         var bookings = new List<Booking>
-        {
-            new Booking(
-                bookingReference: "BK-000001",
-                hotelId: hotel1.Id,
-                roomId: h1Rooms[0].Id, // RoomNumber 1
-                startDate: new DateOnly(2026, 1, 10),
-                endDate: new DateOnly(2026, 1, 12),
-                guestCount: 1,
-                createdUtc: now),
+    {
+        new Booking(
+            bookingReference: "BK-000001",
+            hotelId: hotel1.Id,
+            roomId: h1Rooms[0].Id, // RoomNumber 1
+            startDate: new DateOnly(2026, 1, 10),
+            endDate: new DateOnly(2026, 1, 12),
+            guestCount: 1,
+            createdUtc: now),
 
-            new Booking(
-                bookingReference: "BK-000002",
-                hotelId: hotel1.Id,
-                roomId: h1Rooms[3].Id, // RoomNumber 4 (likely a Double/Deluxe depending on distribution)
-                startDate: new DateOnly(2026, 1, 15),
-                endDate: new DateOnly(2026, 1, 18),
-                guestCount: 2,
-                createdUtc: now)
-        };
+        new Booking(
+            bookingReference: "BK-000002",
+            hotelId: hotel1.Id,
+            roomId: h1Rooms[3].Id, // RoomNumber 4
+            startDate: new DateOnly(2026, 1, 15),
+            endDate: new DateOnly(2026, 1, 18),
+            guestCount: 2,
+            createdUtc: now)
+    };
 
         db.Bookings.AddRange(bookings);
+        await db.SaveChangesAsync(ct); // booking IDs are now populated
+
+        // IMPORTANT: Populate BookingNights to keep seeded data consistent with the "no double booking per night" rule
+        var nights = new List<BookingNight>();
+
+        foreach (var booking in bookings)
+        {
+            foreach (var night in EnumerateNightsInclusive(booking.StartDate, booking.EndDate))
+            {
+                nights.Add(new BookingNight(booking.Id, booking.RoomId, night));
+            }
+        }
+
+        db.BookingNights.AddRange(nights);
         await db.SaveChangesAsync(ct);
 
         return new SeedResult(
@@ -76,6 +86,7 @@ public static class DbInitializer
             Rooms: rooms.Count,
             Bookings: bookings.Count);
     }
+
 
     private static IEnumerable<Room> CreateSixRooms(int hotelId)
     {
@@ -93,4 +104,11 @@ public static class DbInitializer
             new Room(hotelId, roomNumber: 6, roomType: RoomType.Deluxe, capacity: 4),
         };
     }
+
+    private static IEnumerable<DateOnly> EnumerateNightsInclusive(DateOnly from, DateOnly to)
+    {
+        for (var d = from; d <= to; d = d.AddDays(1))
+            yield return d;
+    }
+
 }
