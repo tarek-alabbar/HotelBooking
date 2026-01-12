@@ -277,7 +277,7 @@ dotnet run --project src/HotelBooking.Api
 Swagger:
 
 ```
-https://localhost:<port>/swagger
+https://localhost:<port>/swagger/index.html
 ```
 
 ---

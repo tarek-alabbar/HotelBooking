@@ -5,6 +5,10 @@ using HotelBooking.Api.Application.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Ensure SQLite folder exists (Linux App Service persists under /home)
+Directory.CreateDirectory(Path.Combine(AppContext.BaseDirectory, "data"));
+
+
 // Services
 builder.Services.AddDbContext<BookingDbContext>(options =>
 {
@@ -29,6 +33,11 @@ builder.Services.AddSwaggerGen(options =>
         Version = "v1",
         Description = "A RESTful API for hotel room availability and bookings."
     });
+
+    // Include XML doc comments in Swagger
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    options.IncludeXmlComments(xmlPath);
 });
 
 
@@ -41,15 +50,19 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-if (app.Environment.IsDevelopment())
+var swaggerEnabled = app.Configuration.GetValue<bool>("Swagger:Enabled");
+if (swaggerEnabled)
 {
+    var routePrefix = app.Configuration.GetValue<string>("Swagger:RoutePrefix") ?? "swagger";
+
     app.UseSwagger();
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("/swagger/v1/swagger.json", "Hotel Booking API v1");
-        options.RoutePrefix = string.Empty;
+        options.RoutePrefix = routePrefix;
     });
 }
+
 
 app.UseHttpsRedirection();
 

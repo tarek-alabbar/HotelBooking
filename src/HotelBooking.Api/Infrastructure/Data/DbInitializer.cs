@@ -61,11 +61,16 @@ public static class DbInitializer
         await db.SaveChangesAsync(ct);
 
         // Bookings: seed a few deterministic scenarios
-        var contoso = hotels.Single(h => h.Name.StartsWith("Contoso", StringComparison.OrdinalIgnoreCase));
+        var contoso = hotels[0];
+
         var contosoRooms = rooms
             .Where(r => r.HotelId == contoso.Id)
             .OrderBy(r => r.RoomNumber)
             .ToList();
+
+        if (contosoRooms.Count != 6)
+            throw new InvalidOperationException($"Expected 6 rooms for '{contoso.Name}' but found {contosoRooms.Count}.");
+
 
         var bookings = new List<Booking>
         {
