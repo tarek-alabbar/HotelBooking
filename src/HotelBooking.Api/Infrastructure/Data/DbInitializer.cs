@@ -6,7 +6,10 @@ namespace HotelBooking.Api.Infrastructure.Data;
 
 public static class DbInitializer
 {
-    public sealed record SeedResult(int Hotels, int Rooms, int Bookings);
+    /// <summary>
+    /// Result summary returned by the seed operation.
+    /// </summary>
+    public sealed record SeedResult(int Hotels, int Rooms, int Bookings, int BookingNights);
 
     /// <summary>
     /// Deletes all data from the database in a child-to-parent order to avoid FK issues.
@@ -32,71 +35,80 @@ public static class DbInitializer
     /// <returns>Counts of created entities (0s if already seeded).</returns>
     public static async Task<SeedResult> SeedAsync(BookingDbContext db, CancellationToken ct = default)
     {
-        // If already seeded, be explicit: don't duplicate data.
+        // Idempotency: avoid duplicating data
         if (await db.Hotels.AnyAsync(ct))
-            return new SeedResult(0, 0, 0);
+            return new SeedResult(0, 0, 0, 0);
 
         var now = DateTime.UtcNow;
 
-        // Two hotels to make "search by name" meaningful
-        var hotel1 = new Hotel("Contoso Hotel London");
-        var hotel2 = new Hotel("Fabrikam Grand Manchester");
+        // Hotels: keep names stable for tests and manual verification
+        var hotels = new[]
+        {
+            new Hotel("The Savoy Hotel London"),
+            new Hotel("Grand Central Hotel Glasgow"),
+            new Hotel("The Balmoral Hotel Edinburgh")
+        };
 
-        db.Hotels.AddRange(hotel1, hotel2);
+        db.Hotels.AddRange(hotels);
         await db.SaveChangesAsync(ct);
 
-        // Each hotel: exactly 6 rooms
-        var rooms = new List<Room>();
-        rooms.AddRange(CreateSixRooms(hotel1.Id));
-        rooms.AddRange(CreateSixRooms(hotel2.Id));
+        // Rooms: exactly 6 per hotel
+        var rooms = hotels
+            .SelectMany(h => CreateSixRooms(h.Id))
+            .ToList();
 
         db.Rooms.AddRange(rooms);
         await db.SaveChangesAsync(ct);
 
-        // Create a couple bookings to test conflicts/availability deterministically.
-        var h1Rooms = rooms.Where(r => r.HotelId == hotel1.Id).OrderBy(r => r.RoomNumber).ToList();
+        // Bookings: seed a few deterministic scenarios
+        var contoso = hotels.Single(h => h.Name.StartsWith("Contoso", StringComparison.OrdinalIgnoreCase));
+        var contosoRooms = rooms
+            .Where(r => r.HotelId == contoso.Id)
+            .OrderBy(r => r.RoomNumber)
+            .ToList();
 
         var bookings = new List<Booking>
-    {
-        new Booking(
-            bookingReference: "BK-000001",
-            hotelId: hotel1.Id,
-            roomId: h1Rooms[0].Id,
-            startDate: new DateOnly(2026, 1, 10),
-            endDate: new DateOnly(2026, 1, 12),
-            guestCount: 1,
-            createdUtc: now),
+        {
+            // Occupies RoomNumber 1 for 2026-01-10..2026-01-12
+            new Booking(
+                bookingReference: "BK-000001",
+                hotelId: contoso.Id,
+                roomId: contosoRooms[0].Id,
+                startDate: new DateOnly(2026, 1, 10),
+                endDate: new DateOnly(2026, 1, 12),
+                guestCount: 1,
+                createdUtc: now),
 
-        new Booking(
-            bookingReference: "BK-000002",
-            hotelId: hotel1.Id,
-            roomId: h1Rooms[3].Id,
-            startDate: new DateOnly(2026, 1, 15),
-            endDate: new DateOnly(2026, 1, 18),
-            guestCount: 2,
-            createdUtc: now)
-    };
+            // Occupies RoomNumber 4 for 2026-01-15..2026-01-18
+            new Booking(
+                bookingReference: "BK-000002",
+                hotelId: contoso.Id,
+                roomId: contosoRooms[3].Id,
+                startDate: new DateOnly(2026, 1, 15),
+                endDate: new DateOnly(2026, 1, 18),
+                guestCount: 2,
+                createdUtc: now),
+        };
 
         db.Bookings.AddRange(bookings);
         await db.SaveChangesAsync(ct);
 
-        var nights = new List<BookingNight>();
+        // BookingNights:
+        // We treat [StartDate..EndDate] as an inclusive stay range in this solution,
+        // so each date in that range becomes an occupied night for the room.
+        var bookingNights = bookings
+            .SelectMany(b => EnumerateNightsInclusive(b.StartDate, b.EndDate)
+                .Select(night => new BookingNight(b.Id, b.RoomId, night)))
+            .ToList();
 
-        foreach (var booking in bookings)
-        {
-            foreach (var night in EnumerateNightsInclusive(booking.StartDate, booking.EndDate))
-            {
-                nights.Add(new BookingNight(booking.Id, booking.RoomId, night));
-            }
-        }
-
-        db.BookingNights.AddRange(nights);
+        db.BookingNights.AddRange(bookingNights);
         await db.SaveChangesAsync(ct);
 
         return new SeedResult(
-            Hotels: 2,
+            Hotels: hotels.Length,
             Rooms: rooms.Count,
-            Bookings: bookings.Count);
+            Bookings: bookings.Count,
+            BookingNights: bookingNights.Count);
     }
 
     /// <summary>

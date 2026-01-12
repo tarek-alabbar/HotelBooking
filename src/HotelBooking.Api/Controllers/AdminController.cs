@@ -48,7 +48,7 @@ public sealed class AdminController : ControllerBase
         var result = await DbInitializer.SeedAsync(_db, ct);
         return Ok(new
         {
-            message = result is { Hotels: 0, Rooms: 0, Bookings: 0 }
+            message = result is { Hotels: 0, Rooms: 0, Bookings: 0, BookingNights: 0 }
                 ? "Database already seeded (no changes made)."
                 : "Database seeded successfully.",
             result
