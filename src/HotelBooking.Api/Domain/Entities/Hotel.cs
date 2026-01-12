@@ -8,12 +8,17 @@ public sealed class Hotel
 
     public string Name { get; private set; } = string.Empty;
 
-    // Navigation
     public ICollection<Room> Rooms { get; private set; } = new List<Room>();
 
-    // EF Core needs a parameterless constructor
+    /// <summary>
+    /// EF Core constructor.
+    /// </summary>
     private Hotel() { }
 
+    /// <summary>
+    /// Creates a new hotel with a validated name.
+    /// </summary>
+    /// <param name="name">The hotel name.</param>
     public Hotel(string name)
     {
         if (string.IsNullOrWhiteSpace(name))

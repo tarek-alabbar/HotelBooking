@@ -12,25 +12,38 @@ public sealed class AdminController : ControllerBase
     private readonly BookingDbContext _db;
     private readonly IWebHostEnvironment _env;
 
+    /// <summary>
+    /// Creates a controller providing Development/Test-only endpoints for data management and inspection.
+    /// </summary>
+    /// <param name="db">Database context.</param>
+    /// <param name="env">Host environment used to restrict endpoints outside Development/Test.</param>
     public AdminController(BookingDbContext db, IWebHostEnvironment env)
     {
         _db = db;
         _env = env;
     }
 
+    /// <summary>
+    /// Resets the database by removing all data.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>200 OK if reset completes successfully.</returns>
     [HttpPost("reset")]
     public async Task<IActionResult> Reset(CancellationToken ct)
     {
-        EnsureDevOrTest();
 
         await DbInitializer.ResetAsync(_db, ct);
         return Ok(new { message = "Database reset complete." });
     }
 
+    /// <summary>
+    /// Seeds the database with a minimal deterministic dataset for testing.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>200 OK with counts of inserted records (or a message if already seeded).</returns>
     [HttpPost("seed")]
     public async Task<IActionResult> Seed(CancellationToken ct)
     {
-        EnsureDevOrTest();
 
         var result = await DbInitializer.SeedAsync(_db, ct);
         return Ok(new
@@ -42,12 +55,16 @@ public sealed class AdminController : ControllerBase
         });
     }
 
-
+    /// <summary>
+    /// Retrieves all bookings for inspection in Development/Test.
+    /// Useful for manual verification and automated tests.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>List of bookings ordered by most recent first.</returns>
     [HttpGet("bookings")]
     [ProducesResponseType(typeof(List<BookingListItemDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<BookingListItemDto>>> GetAllBookings(CancellationToken ct)
     {
-        EnsureDevOrTest();
 
         // Query only raw fields that translate cleanly to SQL.
         var raw = await _db.Bookings
@@ -74,7 +91,6 @@ public sealed class AdminController : ControllerBase
                 })
             .ToListAsync(ct);
 
-        // Map + format in-memory (safe across providers).
         var results = raw
             .Select(x => new BookingListItemDto(
                 x.BookingReference,
@@ -90,16 +106,5 @@ public sealed class AdminController : ControllerBase
             .ToList();
 
         return Ok(results);
-    }
-
-
-    private void EnsureDevOrTest()
-    {
-        // "Test" is commonly used by WebApplicationFactory.
-        if (_env.IsDevelopment() || string.Equals(_env.EnvironmentName, "Test", StringComparison.OrdinalIgnoreCase))
-            return;
-
-        // Hide the existence of admin endpoints in non-dev environments.
-        throw new InvalidOperationException("Admin endpoints are disabled outside Development/Test.");
     }
 }

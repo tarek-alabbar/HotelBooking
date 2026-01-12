@@ -11,6 +11,10 @@ public sealed class AvailabilityController : ControllerBase
 {
     private readonly BookingDbContext _db;
 
+    /// <summary>
+    /// Creates a controller to query room availability within a hotel.
+    /// </summary>
+    /// <param name="db">Database context.</param>
     public AvailabilityController(BookingDbContext db)
     {
         _db = db;
@@ -19,6 +23,12 @@ public sealed class AvailabilityController : ControllerBase
     /// <summary>
     /// Finds rooms available for the entire inclusive date range [from..to] for the given guest count.
     /// </summary>
+    /// <param name="hotelId">Hotel identifier.</param>
+    /// <param name="from">Start date (inclusive), must be today or in the future.</param>
+    /// <param name="to">End date (inclusive).</param>
+    /// <param name="guests">Number of guests to accommodate.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>An availability result with candidate rooms that can accommodate the stay.</returns>
     [HttpGet]
     [ProducesResponseType(typeof(AvailabilityResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -30,7 +40,6 @@ public sealed class AvailabilityController : ControllerBase
         [FromQuery] int? guests,
         CancellationToken ct)
     {
-        // -------- Validation --------
         var errors = new Dictionary<string, string[]>();
 
         if (from is null) errors["from"] = new[] { "Query parameter 'from' is required (yyyy-MM-dd)." };
@@ -60,7 +69,6 @@ public sealed class AvailabilityController : ControllerBase
         var toDate = to!.Value;
         var guestCount = guests!.Value;
 
-        // -------- Existence check --------
         var hotelExists = await _db.Hotels
             .AsNoTracking()
             .AnyAsync(h => h.Id == hotelId, ct);
@@ -75,9 +83,6 @@ public sealed class AvailabilityController : ControllerBase
             });
         }
 
-        // -------- Availability query --------
-        // A room is unavailable if it has ANY booking that overlaps:
-        // existing.StartDate <= requested.To AND existing.EndDate >= requested.From
         var availableRooms = await _db.Rooms
             .AsNoTracking()
             .Where(r => r.HotelId == hotelId)

@@ -6,6 +6,10 @@ namespace HotelBooking.Api.Infrastructure.Data;
 
 public sealed class BookingDbContext : DbContext
 {
+    /// <summary>
+    /// Creates a new DbContext instance used for hotel/room/booking persistence.
+    /// </summary>
+    /// <param name="options">DbContext options configured by dependency injection.</param>
     public BookingDbContext(DbContextOptions<BookingDbContext> options) : base(options) { }
 
     public DbSet<Hotel> Hotels => Set<Hotel>();
@@ -13,18 +17,17 @@ public sealed class BookingDbContext : DbContext
     public DbSet<Booking> Bookings => Set<Booking>();
     public DbSet<BookingNight> BookingNights => Set<BookingNight>();
 
-
+    /// <summary>
+    /// Configures the EF Core model: tables, relationships, indexes, and conversions.
+    /// </summary>
+    /// <param name="modelBuilder">The model builder used to configure entities.</param>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // SQLite doesn't natively support DateOnly as a dedicated type.
-        // We store it as TEXT "yyyy-MM-dd" (stable, readable, index-friendly).
+        // SQLite doesn't have a dedicated DateOnly type; store as "yyyy-MM-dd" TEXT.
         var dateOnlyConverter = new ValueConverter<DateOnly, string>(
             d => d.ToString("yyyy-MM-dd"),
             s => DateOnly.Parse(s));
 
-        // -----------------------
-        // Hotel
-        // -----------------------
         modelBuilder.Entity<Hotel>(entity =>
         {
             entity.ToTable("Hotels");
@@ -43,9 +46,6 @@ public sealed class BookingDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // -----------------------
-        // Room
-        // -----------------------
         modelBuilder.Entity<Room>(entity =>
         {
             entity.ToTable("Rooms");
@@ -61,8 +61,6 @@ public sealed class BookingDbContext : DbContext
             entity.Property(x => x.Capacity)
                 .IsRequired();
 
-            // A hotel has exactly 6 rooms by business rule (we'll enforce via seeding/tests),
-            // but at least enforce uniqueness of room number per hotel at DB level.
             entity.HasIndex(x => new { x.HotelId, x.RoomNumber })
                 .IsUnique();
 
@@ -72,9 +70,6 @@ public sealed class BookingDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // -----------------------
-        // Booking
-        // -----------------------
         modelBuilder.Entity<Booking>(entity =>
         {
             entity.ToTable("Bookings");
@@ -85,7 +80,6 @@ public sealed class BookingDbContext : DbContext
                 .IsRequired()
                 .HasMaxLength(32);
 
-            // Enforce unique booking reference at DB level
             entity.HasIndex(x => x.BookingReference)
                 .IsUnique();
 
@@ -105,18 +99,14 @@ public sealed class BookingDbContext : DbContext
             entity.Property(x => x.CreatedUtc)
                 .IsRequired();
 
-            // Helpful query index for availability + conflict checks
             entity.HasIndex(x => new { x.RoomId, x.StartDate, x.EndDate });
 
             entity.HasOne(x => x.Hotel)
-                .WithMany() // we don't need Hotel.Bookings navigation
+                .WithMany()
                 .HasForeignKey(x => x.HotelId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
-        // -----------------------
-        // BookingNight
-        // -----------------------
         modelBuilder.Entity<BookingNight>(entity =>
         {
             entity.ToTable("BookingNights");
@@ -128,7 +118,7 @@ public sealed class BookingDbContext : DbContext
                 .HasColumnType("TEXT")
                 .IsRequired();
 
-            // Hard rule enforcement: a room cannot be double-booked for a night.
+            // Core invariant: a room cannot be double-booked for the same night.
             entity.HasIndex(x => new { x.RoomId, x.NightDate })
                 .IsUnique();
 

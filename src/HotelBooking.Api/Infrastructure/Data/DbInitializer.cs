@@ -8,6 +8,12 @@ public static class DbInitializer
 {
     public sealed record SeedResult(int Hotels, int Rooms, int Bookings);
 
+    /// <summary>
+    /// Deletes all data from the database in a child-to-parent order to avoid FK issues.
+    /// Intended for Development/Test only.
+    /// </summary>
+    /// <param name="db">The database context.</param>
+    /// <param name="ct">Cancellation token.</param>
     public static async Task ResetAsync(BookingDbContext db, CancellationToken ct = default)
     {
         // Delete children first to avoid FK issues.
@@ -17,6 +23,13 @@ public static class DbInitializer
         await db.Hotels.ExecuteDeleteAsync(ct);
     }
 
+    /// <summary>
+    /// Seeds the database with a minimal deterministic dataset for manual testing and automated tests.
+    /// Seeding is idempotent: if hotels already exist, no changes are made.
+    /// </summary>
+    /// <param name="db">The database context.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Counts of created entities (0s if already seeded).</returns>
     public static async Task<SeedResult> SeedAsync(BookingDbContext db, CancellationToken ct = default)
     {
         // If already seeded, be explicit: don't duplicate data.
@@ -30,7 +43,7 @@ public static class DbInitializer
         var hotel2 = new Hotel("Fabrikam Grand Manchester");
 
         db.Hotels.AddRange(hotel1, hotel2);
-        await db.SaveChangesAsync(ct); // get IDs
+        await db.SaveChangesAsync(ct);
 
         // Each hotel: exactly 6 rooms
         var rooms = new List<Room>();
@@ -48,7 +61,7 @@ public static class DbInitializer
         new Booking(
             bookingReference: "BK-000001",
             hotelId: hotel1.Id,
-            roomId: h1Rooms[0].Id, // RoomNumber 1
+            roomId: h1Rooms[0].Id,
             startDate: new DateOnly(2026, 1, 10),
             endDate: new DateOnly(2026, 1, 12),
             guestCount: 1,
@@ -57,7 +70,7 @@ public static class DbInitializer
         new Booking(
             bookingReference: "BK-000002",
             hotelId: hotel1.Id,
-            roomId: h1Rooms[3].Id, // RoomNumber 4
+            roomId: h1Rooms[3].Id,
             startDate: new DateOnly(2026, 1, 15),
             endDate: new DateOnly(2026, 1, 18),
             guestCount: 2,
@@ -65,9 +78,8 @@ public static class DbInitializer
     };
 
         db.Bookings.AddRange(bookings);
-        await db.SaveChangesAsync(ct); // booking IDs are now populated
+        await db.SaveChangesAsync(ct);
 
-        // IMPORTANT: Populate BookingNights to keep seeded data consistent with the "no double booking per night" rule
         var nights = new List<BookingNight>();
 
         foreach (var booking in bookings)
@@ -87,13 +99,13 @@ public static class DbInitializer
             Bookings: bookings.Count);
     }
 
-
+    /// <summary>
+    /// Creates exactly six rooms for a hotel, distributed across room types with deterministic capacities.
+    /// </summary>
+    /// <param name="hotelId">The owning hotel identifier.</param>
+    /// <returns>A fixed set of six rooms.</returns>
     private static IEnumerable<Room> CreateSixRooms(int hotelId)
     {
-        // RoomNumbers 1..6
-        // 1-2: Single (cap 1)
-        // 3-4: Double (cap 2)
-        // 5-6: Deluxe (cap 4)
         return new[]
         {
             new Room(hotelId, roomNumber: 1, roomType: RoomType.Single, capacity: 1),
@@ -105,10 +117,15 @@ public static class DbInitializer
         };
     }
 
+    /// <summary>
+    /// Enumerates an inclusive range of nights between two dates.
+    /// </summary>
+    /// <param name="from">Start date (inclusive).</param>
+    /// <param name="to">End date (inclusive).</param>
+    /// <returns>Sequence of dates representing occupied nights.</returns>
     private static IEnumerable<DateOnly> EnumerateNightsInclusive(DateOnly from, DateOnly to)
     {
         for (var d = from; d <= to; d = d.AddDays(1))
             yield return d;
     }
-
 }

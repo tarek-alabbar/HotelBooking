@@ -14,6 +14,11 @@ public sealed class BookingsController : ControllerBase
     private readonly BookingDbContext _db;
     private readonly BookingService _bookingService;
 
+    /// <summary>
+    /// Creates a controller for booking creation and lookup operations.
+    /// </summary>
+    /// <param name="db">Database context.</param>
+    /// <param name="bookingService">Service responsible for booking allocation and persistence.</param>
     public BookingsController(BookingDbContext db, BookingService bookingService)
     {
         _db = db;
@@ -21,8 +26,16 @@ public sealed class BookingsController : ControllerBase
     }
 
     /// <summary>
-    /// Books a single room for the entire inclusive date range [from..to].
+    /// Creates a booking for a single room for the entire inclusive date range [from..to].
     /// </summary>
+    /// <param name="request">Booking request containing date range, guests, hotel, and optional room type.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>
+    /// 201 Created with booking details if successful;
+    /// 404 if the hotel does not exist;
+    /// 409 if no rooms are available;
+    /// 400 if the request is invalid.
+    /// </returns>
     [HttpPost]
     [ProducesResponseType(typeof(BookingCreatedDto), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -50,7 +63,12 @@ public sealed class BookingsController : ControllerBase
         };
     }
 
-
+    /// <summary>
+    /// Retrieves booking details by booking reference.
+    /// </summary>
+    /// <param name="reference">Booking reference string.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Booking details if found; otherwise 404.</returns>
     [HttpGet("{reference}")]
     [ProducesResponseType(typeof(BookingDetailsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -70,7 +88,6 @@ public sealed class BookingsController : ControllerBase
 
         var normalized = reference.Trim();
 
-        // Query only raw fields that translate cleanly to SQL.
         var raw = await _db.Bookings
             .AsNoTracking()
             .Where(b => b.BookingReference == normalized)
@@ -107,7 +124,6 @@ public sealed class BookingsController : ControllerBase
             });
         }
 
-        // Map + format in-memory (safe across providers).
         var dto = new BookingDetailsDto(
             raw.BookingReference,
             raw.HotelId,
@@ -124,6 +140,4 @@ public sealed class BookingsController : ControllerBase
 
         return Ok(dto);
     }
-
-
 }

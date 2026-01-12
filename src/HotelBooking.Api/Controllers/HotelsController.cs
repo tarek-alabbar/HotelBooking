@@ -11,15 +11,21 @@ public sealed class HotelsController : ControllerBase
 {
     private readonly BookingDbContext _db;
 
+    /// <summary>
+    /// Creates a controller for hotel search operations.
+    /// </summary>
+    /// <param name="db">Database context.</param>
     public HotelsController(BookingDbContext db)
     {
         _db = db;
     }
 
     /// <summary>
-    /// Find hotels by name (case-insensitive, partial match).
+    /// Searches hotels by name using a case-insensitive partial match.
     /// </summary>
     /// <param name="name">Hotel name (or part of it).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A search result containing matching hotels and a contextual message.</returns>
     [HttpGet]
     [ProducesResponseType(typeof(SearchResultDto<HotelSummaryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -44,8 +50,6 @@ public sealed class HotelsController : ControllerBase
 
         var term = name.Trim();
 
-        // SQLite supports case-insensitive LIKE by default for ASCII,
-        // but to be explicit and consistent, we normalize both sides.
         var normalized = term.ToUpperInvariant();
 
         var hotels = await _db.Hotels

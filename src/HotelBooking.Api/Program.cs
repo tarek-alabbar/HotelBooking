@@ -16,9 +16,8 @@ builder.Services.AddDbContext<BookingDbContext>(options =>
 
 builder.Services.AddControllers();
 builder.Services.AddScoped<BookingService>();
-
-
 builder.Services.AddProblemDetails();
+builder.Services.AddHealthChecks();
 
 // Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();
@@ -32,8 +31,6 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-
-builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
@@ -50,7 +47,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("/swagger/v1/swagger.json", "Hotel Booking API v1");
-        options.RoutePrefix = string.Empty; // Swagger at '/'
+        options.RoutePrefix = string.Empty;
     });
 }
 
@@ -61,4 +58,7 @@ app.MapHealthChecks("/health");
 
 app.Run();
 
+/// <summary>
+/// Program entry point type marker used by WebApplicationFactory for integration testing.
+/// </summary>
 public partial class Program { }

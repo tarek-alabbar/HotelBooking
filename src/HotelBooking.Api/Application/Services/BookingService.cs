@@ -10,6 +10,10 @@ public sealed class BookingService
 {
     private readonly BookingDbContext _db;
 
+    /// <summary>
+    /// Creates a new BookingService.
+    /// </summary>
+    /// <param name="db">Database context used for persistence and queries.</param>
     public BookingService(BookingDbContext db)
     {
         _db = db;
@@ -18,9 +22,18 @@ public sealed class BookingService
     public sealed record BookingFailure(string Code, string Message);
     public sealed record BookingSuccess(BookingCreatedDto Result);
 
+    /// <summary>
+    /// Attempts to create a booking for a single room across an inclusive date range.
+    /// Applies validation, capacity constraints, optional room type filtering, and conflict avoidance.
+    /// </summary>
+    /// <param name="request">Booking request payload.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>
+    /// A success result containing booking details if a room is allocated,
+    /// otherwise a failure result describing why a booking could not be made.
+    /// </returns>
     public async Task<object> CreateBookingAsync(CreateBookingRequest request, CancellationToken ct)
     {
-        // ---- Validation ----
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
         if (request.HotelId <= 0) return new BookingFailure("validation", "HotelId must be a positive integer.");
@@ -31,7 +44,6 @@ public sealed class BookingService
         var hotel = await _db.Hotels.AsNoTracking().FirstOrDefaultAsync(h => h.Id == request.HotelId, ct);
         if (hotel is null) return new BookingFailure("not_found", $"No hotel exists with id '{request.HotelId}'.");
 
-        // Candidate rooms: best-fit first (smallest capacity that satisfies guests)
         var candidateRoomsQuery = _db.Rooms
             .AsNoTracking()
             .Where(r => r.HotelId == request.HotelId)
@@ -49,10 +61,8 @@ public sealed class BookingService
         if (candidates.Count == 0)
             return new BookingFailure("no_rooms", "No rooms match the guest count (and optional room type).");
 
-        // We try rooms in order. If one conflicts (unique constraint on nights), try the next.
         foreach (var room in candidates)
         {
-            // Each attempt is atomic.
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
             try
@@ -69,9 +79,8 @@ public sealed class BookingService
                     createdUtc: DateTime.UtcNow);
 
                 _db.Bookings.Add(booking);
-                await _db.SaveChangesAsync(ct); // booking.Id now populated
+                await _db.SaveChangesAsync(ct);
 
-                // Insert one row per night (inclusive)
                 foreach (var night in EnumerateNightsInclusive(request.From, request.To))
                 {
                     _db.BookingNights.Add(new BookingNight(booking.Id, room.Id, night));
@@ -94,8 +103,7 @@ public sealed class BookingService
             }
             catch (DbUpdateException)
             {
-                // Most likely: unique constraint violation on (RoomId, NightDate) OR booking reference collision.
-                // Rollback and try next room.
+                // Try the next room candidate (conflict/uniqueness constraints indicate room not available).
                 await tx.RollbackAsync(ct);
                 _db.ChangeTracker.Clear();
             }
@@ -104,16 +112,25 @@ public sealed class BookingService
         return new BookingFailure("conflict", "No rooms are available for the full requested date range.");
     }
 
+    /// <summary>
+    /// Enumerates an inclusive range of nights between two dates.
+    /// </summary>
+    /// <param name="from">Start date (inclusive).</param>
+    /// <param name="to">End date (inclusive).</param>
+    /// <returns>Sequence of nights represented as DateOnly values.</returns>
     private static IEnumerable<DateOnly> EnumerateNightsInclusive(DateOnly from, DateOnly to)
     {
         for (var d = from; d <= to; d = d.AddDays(1))
             yield return d;
     }
 
+    /// <summary>
+    /// Generates a collision-resistant booking reference.
+    /// Uniqueness is ultimately enforced by a database unique index.
+    /// </summary>
+    /// <returns>A booking reference string. Example: BK-3F2A9C10D4E1</returns>
     private static string GenerateBookingReference()
     {
-        // Simple, readable, collision-resistant + unique index is final guard.
-        // Example: BK-3F2A9C10D4E1
         return "BK-" + Guid.NewGuid().ToString("N")[..12].ToUpperInvariant();
     }
 }
