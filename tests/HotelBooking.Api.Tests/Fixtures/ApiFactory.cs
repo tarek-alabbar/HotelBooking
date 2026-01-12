@@ -45,13 +45,6 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             {
                 options.UseSqlite(_connection);
             });
-
-            // Build provider and ensure DB schema exists
-            var sp = services.BuildServiceProvider();
-
-            using var scope = sp.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<BookingDbContext>();
-            db.Database.EnsureCreated();
         });
     }
 
