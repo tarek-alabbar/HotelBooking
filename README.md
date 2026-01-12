@@ -4,6 +4,65 @@ A REST API for searching hotels, checking room availability, and creating bookin
 
 ---
 
+# 🚀 Running the system
+
+This API is **already deployed and running on Azure** and can be used immediately without cloning or building anything.
+
+### 🌍 Live Azure environment
+
+| Purpose      | URL                                                                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Swagger UI   | [https://hotelbookingbytarek.azurewebsites.net/swagger/index.html](https://hotelbookingbytarek.azurewebsites.net/swagger/index.html) |
+| Health check | [https://hotelbookingbytarek.azurewebsites.net/health](https://hotelbookingbytarek.azurewebsites.net/health)                         |
+
+Swagger provides a fully interactive UI to:
+
+- Search hotels
+- Check room availability
+- Create bookings
+- Look up bookings by reference
+- (Admin) Reset and seed test data
+
+This live environment is intended for reviewers to explore the system and verify behaviour without needing to run anything locally.
+
+---
+
+## 🧪 Reset & seed (for reviewers)
+
+The API exposes special **admin-only endpoints** to make testing deterministic and fast:
+
+| Action         | Endpoint                |
+| -------------- | ----------------------- |
+| Reset database | `POST /api/admin/reset` |
+| Seed test data | `POST /api/admin/seed`  |
+
+These populate:
+
+- Hotels
+- Rooms
+- Example bookings
+- Per-night occupancy records
+
+> These endpoints are disabled by default in production and only enabled for testing and review purposes.
+
+---
+
+## 🖥 Running locally
+
+```bash
+dotnet run --project src/HotelBooking.Api
+```
+
+Swagger will be available at:
+
+```
+http://localhost:<port>/swagger/index.html
+```
+
+(The exact port is printed in the console on startup.)
+
+---
+
 ## 1. Overview
 
 This system models a simplified but realistic hotel booking problem:
@@ -38,7 +97,7 @@ This system explicitly guarantees:
 | Deterministic availability  | Single SQL query using `NOT EXISTS`                        |
 | Testable system             | Seed/reset endpoints + in-memory DB                        |
 
-These rules are not just “checked in code” they are structurally enforced by the model and database.
+These rules are not just “checked in code” — they are structurally enforced by the model and database.
 
 ---
 
@@ -135,7 +194,7 @@ This is how real booking engines are built.
 
 ## 5. How Availability Works
 
-Availability is computed with a **single SQL query**:
+Availability is computed with a **single SQL query**.
 
 A room is available if:
 
@@ -152,43 +211,28 @@ AND booking.StartDate <= requested.To
 AND booking.EndDate >= requested.From
 ```
 
-This guarantees:
-
-- No partial overlaps
-- No room switching
-- No false positives
-
 Only rooms free for the **entire stay** are returned.
 
 ---
 
 ## 6. How Booking Works
 
-When creating a booking:
+1. Candidate rooms are filtered by hotel, capacity, and optional room type
+2. They are ordered by **smallest capacity first** (best-fit allocation)
+3. For each room:
 
-1. Rooms are filtered by:
-
-   - Hotel
-   - Capacity
-   - Optional room type
-
-2. They are sorted by **smallest capacity first** (best-fit allocation)
-
-3. For each candidate room:
    - A booking is created
-   - One `BookingNight` row is inserted per night
+   - A `BookingNight` row is inserted for each night
    - The database enforces uniqueness
-4. If a conflict occurs, the next room is tried
 
+4. If a conflict occurs, the next room is tried
 5. If all rooms conflict → **409 Conflict**
 
-All of this happens inside a **transaction**.
+Everything runs inside a **transaction**.
 
 ---
 
-## 7. API Design
-
-### 7.1 Endpoints
+## 7. API Endpoints
 
 | Endpoint                            | Purpose                       |
 | ----------------------------------- | ----------------------------- |
@@ -202,87 +246,20 @@ All of this happens inside a **transaction**.
 
 ---
 
-### 7.2 DTO philosophy
+## 8. Testing Strategy
 
-DTOs are named by **purpose**, not by entity.
+All tests are **true integration tests**:
 
-Examples:
+- Real API
+- Real EF Core
+- Real SQLite
+- HTTP calls
 
-- `HotelSummaryDto`
-- `BookingDetailsDto`
-- `RoomAvailabilityDto`
-
-There is no generic `HotelDto`.
-
-This prevents:
-
-- Accidental over-exposure
-- God-objects
-- Breaking API changes
-
-Each endpoint returns **only what it needs**.
+This validates behaviour exactly as it runs in production.
 
 ---
 
-### 7.3 Error handling
-
-All errors use `ProblemDetails` (RFC 7807).
-
-This gives:
-
-- Machine-readable errors
-- Human-friendly messages
-- Standardized API behaviour
-
----
-
-## 8. Admin & Test Endpoints
-
-Seed/reset endpoints exist to:
-
-- Make testing deterministic
-- Allow reviewers to try scenarios quickly
-- Enable automated integration tests
-
-They are restricted to **Development/Test environments**.
-
----
-
-## 9. Testing Strategy
-
-Tests are **true integration tests**:
-
-- The API runs in-memory
-- SQLite runs in-memory
-- Requests are sent over HTTP
-- The real EF Core model is used
-
-Tests verify:
-
-- Availability logic
-- Booking rules
-- Conflict handling
-- End-to-end flows
-
-This ensures the system works as a whole — not just in isolation.
-
----
-
-## 10. Running the system
-
-```bash
-dotnet run --project src/HotelBooking.Api
-```
-
-Swagger:
-
-```
-https://localhost:<port>/swagger/index.html
-```
-
----
-
-## 11. Running tests
+## 9. Running tests
 
 ```bash
 dotnet test
@@ -290,24 +267,21 @@ dotnet test
 
 ---
 
-## 12. Design Decisions & Trade-offs
+## 10. Design Decisions & Trade-offs
 
-- **BookingNight table** → concurrency-safe booking
-- **DTO naming** → stable API contracts
-- **AsNoTracking on reads** → performance + correctness
-- **Validation at API boundary** → fail fast
-- **SQLite** → deterministic and simple for demos
-- **No authentication** → per assignment scope
+- `BookingNight` → concurrency-safe bookings
+- DTOs by purpose → stable API
+- Best-fit allocation → efficient room usage
+- SQLite → deterministic & simple
+- No auth → assignment scope
 
 ---
 
-## 13. Future Improvements
+## 11. Future Improvements
 
-In a real system you would add:
-
-- Authentication & authorization
+- Authentication & roles
+- Cancellations & modifications
 - Pagination
-- Cancellation / modification flows
-- Payment processing
+- Payments
 - Metrics & tracing
-- Azure SQL + App Service deployment
+- Azure SQL
