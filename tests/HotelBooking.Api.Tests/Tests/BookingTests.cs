@@ -6,16 +6,27 @@ using HotelBooking.Api.Tests.Fixtures;
 
 namespace HotelBooking.Api.Tests.Tests;
 
+/// <summary>
+/// Integration tests for booking creation and booking lookup endpoints.
+/// </summary>
 public sealed class BookingTests : ApiTestBase
 {
+    /// <summary>
+    /// Creates a new test class instance using the shared API factory.
+    /// </summary>
+    /// <param name="factory">The API test host factory.</param>
     public BookingTests(ApiFactory factory) : base(factory) { }
 
+    /// <summary>
+    /// Verifies that creating a booking returns a booking reference, and that the booking can then be
+    /// retrieved by reference with consistent details.
+    /// </summary>
     [Fact]
     public async Task CreateBooking_Then_LookupByReference_Should_Return_Details()
     {
         await ResetAndSeedAsync();
 
-        var hotelId = await GetHotelIdByNameAsync("Contoso");
+        var hotelId = await GetPrimarySeededHotelIdAsync();
 
         var createBody = new
         {
@@ -50,7 +61,9 @@ public sealed class BookingTests : ApiTestBase
         details.To.Should().Be("2026-01-22");
     }
 
-
+    /// <summary>
+    /// Verifies that booking creation fails with 400 Bad Request when the guest count exceeds any room capacity.
+    /// </summary>
     [Fact]
     public async Task CreateBooking_TooManyGuests_Should_Return_400()
     {
@@ -68,12 +81,16 @@ public sealed class BookingTests : ApiTestBase
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    /// <summary>
+    /// Verifies that once all Double rooms are booked for the same date range,
+    /// a subsequent booking request for a Double room returns 409 Conflict.
+    /// </summary>
     [Fact]
     public async Task CreateBooking_WhenAllDoubleRoomsBooked_Should_Return_409()
     {
         await ResetAndSeedAsync();
 
-        var hotelId = await GetHotelIdByNameAsync("Contoso");
+        var hotelId = await GetPrimarySeededHotelIdAsync();
 
         // There are 2 Double rooms in seed (room numbers 3 and 4)
         var body = new
@@ -102,5 +119,4 @@ public sealed class BookingTests : ApiTestBase
         var r3 = await Client.PostAsJsonAsync("/api/bookings", body);
         r3.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
-
 }

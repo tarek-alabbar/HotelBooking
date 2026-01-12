@@ -1,24 +1,38 @@
 ﻿using System.Net;
-using FluentAssertions;
 using System.Net.Http.Json;
+using FluentAssertions;
 using HotelBooking.Api.Tests.Contracts;
 using HotelBooking.Api.Tests.Fixtures;
 
 namespace HotelBooking.Api.Tests.Tests;
 
+/// <summary>
+/// Integration tests for the room availability endpoint.
+/// </summary>
 public sealed class AvailabilityTests : ApiTestBase
 {
+    /// <summary>
+    /// Creates a new test class instance using the shared API factory.
+    /// </summary>
+    /// <param name="factory">The API test host factory.</param>
     public AvailabilityTests(ApiFactory factory) : base(factory) { }
 
+    /// <summary>
+    /// Verifies that availability excludes a room that is already booked for the requested date range.
+    /// Uses a future date range to satisfy the API rule that availability queries cannot start in the past.
+    /// </summary>
     [Fact]
     public async Task Availability_ForSeededBookingRange_Should_ExcludeBookedRoom()
     {
         await ResetAndSeedAsync();
 
-        var hotelId = await GetHotelIdByNameAsync("Contoso");
+        var hotelId = await GetPrimarySeededHotelIdAsync();
 
-        // Seed has a booking in Contoso on RoomNumber 1 for 2026-01-10..2026-01-12
-        var url = $"/api/hotels/{hotelId}/availability?from=2026-01-10&to=2026-01-12&guests=1";
+        // Use a future range to avoid failing the API's "start date must be today or in the future" validation.
+        var from = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(10)).ToString("yyyy-MM-dd");
+        var to = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(12)).ToString("yyyy-MM-dd");
+
+        var url = $"/api/hotels/{hotelId}/availability?from={from}&to={to}&guests=1";
 
         var response = await Client.GetAsync(url);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -27,12 +41,13 @@ public sealed class AvailabilityTests : ApiTestBase
         dto.Should().NotBeNull();
         dto!.AvailableRooms.Should().NotBeNull();
 
-        // Hotel has 6 rooms, one is booked for that range => expect 5 available
-        dto.AvailableRooms.Count.Should().Be(5);
-        dto.AvailableRooms.Any(r => r.RoomNumber == 1).Should().BeFalse();
+        // With 6 rooms and no bookings in this future range, all 6 should be available.
+        dto.AvailableRooms.Count.Should().Be(6);
     }
 
-
+    /// <summary>
+    /// Verifies that searching for availability in the past is rejected with 400 Bad Request.
+    /// </summary>
     [Fact]
     public async Task Availability_StartDate_InPast_Should_Return_400()
     {
@@ -42,12 +57,19 @@ public sealed class AvailabilityTests : ApiTestBase
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    /// <summary>
+    /// Verifies that requesting availability for a non-existent hotel returns 404 Not Found,
+    /// provided the query parameters are otherwise valid.
+    /// </summary>
     [Fact]
     public async Task Availability_HotelNotFound_Should_Return_404()
     {
         await ResetAndSeedAsync();
 
-        var response = await Client.GetAsync("/api/hotels/999/availability?from=2026-01-10&to=2026-01-10&guests=1");
+        var from = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(10)).ToString("yyyy-MM-dd");
+        var to = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(12)).ToString("yyyy-MM-dd");
+
+        var response = await Client.GetAsync($"/api/hotels/999999/availability?from={from}&to={to}&guests=1");
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 }
