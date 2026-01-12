@@ -43,6 +43,13 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+// Ensure the database exists and is migrated on startup (required for Azure where the DB file may be empty).
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<BookingDbContext>();
+    await db.Database.MigrateAsync();
+}
+
 
 if (!app.Environment.IsDevelopment())
 {
